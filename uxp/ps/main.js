@@ -56,13 +56,17 @@ const onCommandPacket = async (packet) => {
         out.response = response;
         out.status = "SUCCESS";
 
+        // PATCHED (comfy_F 2026-08-10): after closeDocument there may be no active
+        // document left — the info block is best-effort context, not the result.
         let activeDocument = app.activeDocument
-        let doc = generateDocumentInfo(activeDocument, activeDocument)
-        out.document = doc;
+        if (activeDocument) {
+            let doc = generateDocumentInfo(activeDocument, activeDocument)
+            out.document = doc;
 
-        out.layers = await getLayers();
+            out.layers = await getLayers();
 
-        out.hasActiveSelection = hasActiveSelection();
+            out.hasActiveSelection = hasActiveSelection();
+        }
     } catch (e) {
         out.status = "FAILURE";
         out.message = `Error calling ${command.action} : ${e}`;

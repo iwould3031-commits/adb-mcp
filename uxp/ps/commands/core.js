@@ -57,6 +57,18 @@ const openFile = async (command) => {
     });
 };
 
+// ADDED (comfy_F 2026-08-10): close the active document without saving. Needed by
+// datacurator's erase pipeline so batch erases don't pile documents up in Photoshop.
+const closeDocument = async (command) => {
+    await execute(async () => {
+        let doc = app.activeDocument;
+        if (!doc) {
+            throw new Error("closeDocument : Requires an open Photoshop document");
+        }
+        await doc.closeWithoutSaving();
+    });
+};
+
 const placeImage = async (command) => {
     let options = command.options;
     let layerId = options.layerId;
@@ -69,6 +81,9 @@ const placeImage = async (command) => {
     await execute(async () => {
         selectLayer(layer, true);
         let layerId = layer.id;
+        // PATCHED (comfy_F 2026-08-01): remember the caller's layer name. Upstream renamed the
+        // placed layer to the numeric layer id, which threw away the name the caller asked for.
+        let layerName = layer.name;
 
         let imagePath = await tokenify(options.imagePath);
 
@@ -115,13 +130,23 @@ const placeImage = async (command) => {
                 ],
                 to: {
                     _obj: "layer",
-                    name: layerId,
+                    name: layerName,
                 },
             },
         ];
 
         await action.batchPlay(commands, {});
-        await rasterizeLayer(command);
+
+        // PATCHED (comfy_F 2026-08-01): placeEvent REPLACES the target layer with a brand new
+        // smart-object layer that has a NEW id, so the original command.options.layerId is stale.
+        // Upstream passed that stale id straight to rasterizeLayer, which then threw
+        // "rasterizeLayer : Could not find layerId : <id>" on every single place_image call --
+        // after the placement had already succeeded. Resolve the freshly placed layer instead.
+        let placedLayer = app.activeDocument.activeLayers[0];
+        await rasterizeLayer({
+            ...command,
+            options: { ...options, layerId: placedLayer.id },
+        });
     });
 };
 
@@ -538,6 +563,7 @@ const commandHandlers = {
     duplicateDocument,
     getDocumentImage,
     openFile,
+    closeDocument,
     placeImage,
     getDocumentInfo,
     cropDocument,
