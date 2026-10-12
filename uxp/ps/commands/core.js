@@ -490,9 +490,10 @@ const setActiveDocument = async (command) => {
 
     let options = command.options;
     let documentId = options.documentId;
-    let docs = listOpenDocuments();
 
-    for (let doc of docs) {
+    // listOpenDocuments() yields plain info objects, not Document instances —
+    // assigning one to app.activeDocument throws "is of type object. Expecting type Document".
+    for (let doc of app.documents) {
         if (doc.id === documentId) {
             await execute(async () => {
                 app.activeDocument = doc;
@@ -501,6 +502,8 @@ const setActiveDocument = async (command) => {
             return
         }
     }
+
+    throw new Error(`setActiveDocument : no open document with id ${documentId}`);
 }
 
 const getDocuments = async (command) => {

@@ -29,3 +29,7 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# local runtime (per-machine)
+*.log
+uxp/ps/.uxprc

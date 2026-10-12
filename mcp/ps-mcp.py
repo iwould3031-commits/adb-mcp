@@ -294,54 +294,57 @@ def get_document_image():
 @mcp.tool()
 def save_document_image_as_png(file_path: str):
     """
-    Capture the Photoshop document and save as PNG file
-    
+    Capture the currently visible Photoshop document and save it as a PNG file.
+
+    NOTE ON QUALITY: the UXP plugin encodes the canvas as JPEG before handing it over
+    (see getDocumentImage in uxp/ps/commands/core.js), so this PNG is re-encoded from
+    lossy data. When you need a pixel-exact export, use duplicate_document ->
+    flatten_all_layers -> save_document_as(path, "PNG") -> close_document instead.
+
     Args:
         file_path: Where to save the PNG file
-        
+
     Returns:
         dict: Status and file info
     """
+    # PATCHED (comfy_F 2026-08-01): upstream tested for response['format'] == 'raw' and
+    # a 'rawDataBase64' key, but the plugin returns {'status':..., 'response': {'base64Image',
+    # 'dataUrl', 'format':'jpeg', 'width', 'height', ...}} -- so this always fell through to
+    # "No raw image data received" and never saved anything. It also called Image.fromarray on
+    # the fastmcp Image imported at the top of this file, which has no such method.
     command = createCommand("getDocumentImage", {})
     response = sendCommand(command)
-    
-    if response.get('format') == 'raw' and 'rawDataBase64' in response:
-        try:
-            # Decode raw data
-            raw_bytes = base64.b64decode(response['rawDataBase64'])
-            
-            # Extract metadata
-            width = response['width']
-            height = response['height']
-            components = response['components']
-            
-            # Convert to numpy array and reshape
-            pixel_array = np.frombuffer(raw_bytes, dtype=np.uint8)
-            image_array = pixel_array.reshape((height, width, components))
-            
-            # Create and save PNG
-            mode = 'RGBA' if components == 4 else 'RGB'
-            image = Image.fromarray(image_array, mode)
-            image.save(file_path, 'PNG')
-            
-            return {
-                'status': 'success',
-                'file_path': file_path,
-                'width': width,
-                'height': height,
-                'size_bytes': os.path.getsize(file_path)
-            }
-            
-        except Exception as e:
-            return {
-                'status': 'error',
-                'error': str(e)
-            }
-    else:
+
+    payload = response.get('response') if isinstance(response, dict) else None
+    if not isinstance(payload, dict):
+        return {'status': 'error', 'error': 'No image data received', 'raw': response}
+
+    b64 = payload.get('base64Image')
+    if not b64:
+        data_url = payload.get('dataUrl') or ''
+        if ',' in data_url:
+            b64 = data_url.split(',', 1)[1]
+
+    if not b64:
+        return {'status': 'error', 'error': 'No image data received', 'raw': response}
+
+    try:
+        from io import BytesIO
+        from PIL import Image as PILImage
+
+        image = PILImage.open(BytesIO(base64.b64decode(b64)))
+        image.save(file_path, 'PNG')
+
         return {
-            'status': 'error',
-            'error': 'No raw image data received'
+            'status': 'success',
+            'file_path': file_path,
+            'width': image.width,
+            'height': image.height,
+            'size_bytes': os.path.getsize(file_path),
+            'note': 'source was JPEG-encoded by the UXP plugin; not pixel-exact',
         }
+    except Exception as e:
+        return {'status': 'error', 'error': str(e)}
 
 @mcp.tool()
 def get_layers() -> list:
@@ -1002,9 +1005,10 @@ def translate_layer(
         Moves the layer with the specified ID on the X and Y axis by the specified number of pixels.
 
     Args:
-        layer_name (str): The name of the layer that should be moved.
+        layer_id (int): The id of the layer that should be moved.
         x_offset (int): Amount to move on the horizontal axis. Negative values move the layer left, positive values right
-        y_offset (int): Amount to move on the vertical axis. Negative values move the layer down, positive values up
+        y_offset (int): Amount to move on the vertical axis. Positive values move the layer DOWN, negative values UP
+            (i.e. the offset is in document coordinates, where y grows downward).
     """
     
     command = createCommand("translateLayer", {
@@ -1142,11 +1146,10 @@ def clear_selection():
     
     """Clears / deselects the current selection"""
 
-    command = createCommand("selectRectangle", {
-        "feather":0,
-        "antiAlias":True,
-        "bounds":{"top": 0, "left": 0, "bottom": 0, "right": 0}
-    })
+    # PATCHED (comfy_F 2026-08-21): was dispatching "selectRectangle" with no layerId, but that
+    # plugin handler requires one -> always failed with "Could not find layerId : undefined".
+    # The plugin has a dedicated clearSelection handler that takes no options.
+    command = createCommand("clearSelection", {})
 
     return sendCommand(command)
 

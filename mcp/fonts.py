@@ -52,7 +52,7 @@ def list_all_fonts_postscript():
         ])
     
     else:
-        print(f"Unsupported platform: {sys.platform}")
+        print(f"Unsupported platform: {sys.platform}", file=sys.stderr)
         return []
     
     # Get all font files from all directories
@@ -86,9 +86,9 @@ def list_all_fonts_postscript():
                                 postscript_names.append(ps_name)
                             font.close()
                         except Exception as e:
-                            print(f"Error processing font {i} in collection {font_path}: {e}")
+                            print(f"Error processing font {i} in collection {font_path}: {e}", file=sys.stderr)
                 except Exception as e:
-                    print(f"Error determining number of fonts in collection {font_path}: {e}")
+                    print(f"Error determining number of fonts in collection {font_path}: {e}", file=sys.stderr)
             else:
                 # Regular TTF/OTF file
                 try:
@@ -98,9 +98,9 @@ def list_all_fonts_postscript():
                         postscript_names.append(ps_name)
                     font.close()
                 except Exception as e:
-                    print(f"Error processing font {font_path}: {e}")
+                    print(f"Error processing font {font_path}: {e}", file=sys.stderr)
         except Exception as e:
-            print(f"Error with font file {font_path}: {e}")
+            print(f"Error with font file {font_path}: {e}", file=sys.stderr)
  
     return list(set(postscript_names))
 
@@ -143,4 +143,4 @@ def _extract_postscript_name(font):
 
 if __name__ == "__main__":
     font_names = list_all_fonts_postscript()
-    print(f"Number of fonts found: {len(font_names)}")
+    print(f"Number of fonts found: {len(font_names)}", file=sys.stderr)
